@@ -6,10 +6,11 @@ import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Logo } from '../components/ui/Logo'
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import { uk } from '../lib/i18n/uk'
 
 export function RegisterPage() {
-  const { signUpWithEmail, signInWithGoogle, getErrorMessage } = useAuth()
+  const { signUpWithEmail, getErrorMessage } = useAuth()
   const navigate = useNavigate()
 
   const [email, setEmail] = useState('')
@@ -147,20 +148,7 @@ export function RegisterPage() {
           </Button>
         </form>
 
-        <div className="flex items-center gap-3 my-6">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400 uppercase">{uk.auth.or}</span>
-          <div className="flex-1 h-px bg-gray-200" />
-        </div>
-
-        <Button
-          variant="secondary"
-          fullWidth
-          type="button"
-          onClick={signInWithGoogle}
-        >
-          {uk.auth.googleSignIn}
-        </Button>
+        <GoogleSignInButton />
 
         <p className="text-center text-sm text-espresso/60 mt-8">
           {uk.auth.hasAccount}{' '}

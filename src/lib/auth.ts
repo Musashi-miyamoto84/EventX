@@ -105,6 +105,24 @@ export async function refreshToken(
   })
 }
 
+export interface IdentitySettings {
+  external: {
+    google: boolean
+    email: boolean
+  }
+}
+
+export async function fetchIdentitySettings(): Promise<IdentitySettings | null> {
+  try {
+    const url = `${getIdentityUrl()}/settings`
+    const response = await fetch(url)
+    if (!response.ok) return null
+    return (await response.json()) as IdentitySettings
+  } catch {
+    return null
+  }
+}
+
 export function getGoogleAuthUrl(): string {
   const redirectUri = window.location.origin
   return `${getIdentityUrl()}/authorize?provider=google&redirect_uri=${encodeURIComponent(redirectUri)}`
