@@ -1,0 +1,168 @@
+export interface NetlifyUser {
+  id: string
+  email: string
+  user_metadata: {
+    full_name?: string
+    avatar_url?: string
+  }
+  app_metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface AuthTokens {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+  token_type: string
+}
+
+const IDENTITY_URL = '/.netlify/identity'
+
+function getIdentityUrl(): string {
+  if (import.meta.env.DEV && import.meta.env.VITE_NETLIFY_IDENTITY_URL) {
+    return import.meta.env.VITE_NETLIFY_IDENTITY_URL
+  }
+  return IDENTITY_URL
+}
+
+async function identityFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const url = `${getIdentityUrl()}${path}`
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    const message =
+      data.msg || data.error_description || data.error || 'auth_error'
+    throw new Error(message)
+  }
+
+  return data as T
+}
+
+export async function signUp(
+  email: string,
+  password: string,
+): Promise<{ user: NetlifyUser }> {
+  return identityFetch('/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export async function signInWithPassword(
+  email: string,
+  password: string,
+): Promise<AuthTokens & { user?: NetlifyUser }> {
+  return identityFetch('/token', {
+    method: 'POST',
+    body: JSON.stringify({
+      grant_type: 'password',
+      username: email,
+      password,
+    }),
+  })
+}
+
+export async function requestMagicLink(email: string): Promise<void> {
+  await identityFetch('/magiclink', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function requestPasswordRecovery(email: string): Promise<void> {
+  await identityFetch('/recover', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function getUser(accessToken: string): Promise<NetlifyUser> {
+  return identityFetch('/user', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export async function refreshToken(
+  refreshTokenValue: string,
+): Promise<AuthTokens> {
+  return identityFetch('/token', {
+    method: 'POST',
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: refreshTokenValue,
+    }),
+  })
+}
+
+export function getGoogleAuthUrl(): string {
+  const redirectUri = `${window.location.origin}/auth/callback`
+  return `${getIdentityUrl()}/authorize?provider=google&redirect_uri=${encodeURIComponent(redirectUri)}`
+}
+
+export function mapAuthError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'unknown'
+
+  if (message.includes('User already registered')) {
+    return 'userExists'
+  }
+  if (
+    message.includes('Invalid login credentials') ||
+    message.includes('invalid_grant')
+  ) {
+    return 'invalidCredentials'
+  }
+  if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+    return 'network'
+  }
+  return 'generic'
+}
+
+const TOKEN_KEY = 'eventoly_auth'
+
+export interface StoredAuth {
+  access_token: string
+  refresh_token: string
+  user: NetlifyUser
+  expires_at: number
+}
+
+export function saveAuth(tokens: AuthTokens, user: NetlifyUser): StoredAuth {
+  const auth: StoredAuth = {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    user,
+    expires_at: Date.now() + tokens.expires_in * 1000,
+  }
+  localStorage.setItem(TOKEN_KEY, JSON.stringify(auth))
+  return auth
+}
+
+export function loadAuth(): StoredAuth | null {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as StoredAuth
+  } catch {
+    return null
+  }
+}
+
+export function clearAuth(): void {
+  localStorage.removeItem(TOKEN_KEY)
+}
+
+export function getUserInitial(user: NetlifyUser | null): string {
+  if (!user?.email) return '?'
+  return user.email.charAt(0).toUpperCase()
+}
