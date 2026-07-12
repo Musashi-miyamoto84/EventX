@@ -9,17 +9,17 @@ import {
 } from 'react'
 import {
   clearAuth,
-  getGoogleAuthUrl,
   getUser,
   loadAuth,
   mapAuthError,
-  parseHashTokens,
+  parseHashAuthAction,
   refreshToken,
-  requestMagicLink,
   requestPasswordRecovery,
+  resendConfirmationEmail,
   saveAuth,
   signInWithPassword,
   signUp,
+  verifyEmailToken,
   type NetlifyUser,
   type StoredAuth,
 } from '../lib/auth'
@@ -29,9 +29,8 @@ interface AuthContextValue {
   loading: boolean
   signUpWithEmail: (email: string, password: string) => Promise<{ needsVerification: boolean }>
   signInWithEmail: (email: string, password: string) => Promise<void>
-  signInWithMagicLink: (email: string) => Promise<void>
   recoverPassword: (email: string) => Promise<void>
-  signInWithGoogle: () => void
+  resendConfirmation: (email: string) => Promise<void>
   signOut: () => void
   getErrorMessage: (error: unknown) => string
 }
@@ -50,6 +49,10 @@ async function applyTokens(accessToken: string, refreshTokenValue: string, expir
     freshUser,
   )
   return freshUser
+}
+
+function clearHashFromUrl() {
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -73,28 +76,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const handleHashLogin = useCallback(async () => {
-    const tokens = parseHashTokens()
-    if (!tokens) return false
+  const handleHashAuth = useCallback(async () => {
+    const action = parseHashAuthAction()
+    if (!action) return false
 
     try {
-      const freshUser = await applyTokens(
-        tokens.access_token,
-        tokens.refresh_token,
-        tokens.expires_in,
-      )
-      setUser(freshUser)
-      window.history.replaceState(null, '', window.location.pathname)
-      return true
+      if (action.type === 'session') {
+        const freshUser = await applyTokens(
+          action.tokens.access_token,
+          action.tokens.refresh_token,
+          action.tokens.expires_in,
+        )
+        setUser(freshUser)
+        clearHashFromUrl()
+        return true
+      }
+
+      if (action.type === 'confirmation') {
+        const tokens = await verifyEmailToken(action.token, 'signup')
+        const freshUser = await applyTokens(
+          tokens.access_token,
+          tokens.refresh_token,
+          tokens.expires_in,
+        )
+        setUser(freshUser)
+        clearHashFromUrl()
+        return true
+      }
+
+      if (action.type === 'recovery') {
+        const tokens = await verifyEmailToken(action.token, 'recovery')
+        const freshUser = await applyTokens(
+          tokens.access_token,
+          tokens.refresh_token,
+          tokens.expires_in,
+        )
+        setUser(freshUser)
+        clearHashFromUrl()
+        return true
+      }
     } catch {
       clearAuth()
-      return false
+      clearHashFromUrl()
     }
+
+    return false
   }, [])
 
   useEffect(() => {
     async function init() {
-      const fromHash = await handleHashLogin()
+      const fromHash = await handleHashAuth()
       if (fromHash) {
         setLoading(false)
         return
@@ -108,33 +139,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     init()
-  }, [applyStoredAuth, handleHashLogin])
+  }, [applyStoredAuth, handleHashAuth])
 
   const signUpWithEmail = useCallback(
     async (email: string, password: string) => {
-      await signUp(email, password)
+      await signUp(email.trim().toLowerCase(), password)
       return { needsVerification: true }
     },
     [],
   )
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
-    const tokens = await signInWithPassword(email, password)
+    const tokens = await signInWithPassword(email.trim().toLowerCase(), password)
     const freshUser = await getUser(tokens.access_token)
     saveAuth(tokens, freshUser)
     setUser(freshUser)
   }, [])
 
-  const signInWithMagicLink = useCallback(async (email: string) => {
-    await requestMagicLink(email)
-  }, [])
-
   const recoverPassword = useCallback(async (email: string) => {
-    await requestPasswordRecovery(email)
+    await requestPasswordRecovery(email.trim().toLowerCase())
   }, [])
 
-  const signInWithGoogle = useCallback(() => {
-    window.location.href = getGoogleAuthUrl()
+  const resendConfirmation = useCallback(async (email: string) => {
+    await resendConfirmationEmail(email.trim().toLowerCase())
   }, [])
 
   const signOut = useCallback(() => {
@@ -150,9 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signUpWithEmail,
       signInWithEmail,
-      signInWithMagicLink,
       recoverPassword,
-      signInWithGoogle,
+      resendConfirmation,
       signOut,
       getErrorMessage,
     }),
@@ -161,9 +187,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signUpWithEmail,
       signInWithEmail,
-      signInWithMagicLink,
       recoverPassword,
-      signInWithGoogle,
+      resendConfirmation,
       signOut,
       getErrorMessage,
     ],

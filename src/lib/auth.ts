@@ -73,13 +73,6 @@ export async function signInWithPassword(
   })
 }
 
-export async function requestMagicLink(email: string): Promise<void> {
-  await identityFetch('/magiclink', {
-    method: 'POST',
-    body: JSON.stringify({ email }),
-  })
-}
-
 export async function requestPasswordRecovery(email: string): Promise<void> {
   await identityFetch('/recover', {
     method: 'POST',
@@ -105,29 +98,6 @@ export async function refreshToken(
   })
 }
 
-export interface IdentitySettings {
-  external: {
-    google: boolean
-    email: boolean
-  }
-}
-
-export async function fetchIdentitySettings(): Promise<IdentitySettings | null> {
-  try {
-    const url = `${getIdentityUrl()}/settings`
-    const response = await fetch(url)
-    if (!response.ok) return null
-    return (await response.json()) as IdentitySettings
-  } catch {
-    return null
-  }
-}
-
-export function getGoogleAuthUrl(): string {
-  const redirectUri = window.location.origin
-  return `${getIdentityUrl()}/authorize?provider=google&redirect_uri=${encodeURIComponent(redirectUri)}`
-}
-
 export function parseHashTokens(): AuthTokens | null {
   const hash = window.location.hash.replace(/^#/, '')
   if (!hash || !hash.includes('access_token=')) return null
@@ -147,6 +117,52 @@ export function parseHashTokens(): AuthTokens | null {
   }
 }
 
+export type HashAuthAction =
+  | { type: 'session'; tokens: AuthTokens }
+  | { type: 'confirmation'; token: string }
+  | { type: 'recovery'; token: string }
+
+export function parseHashAuthAction(): HashAuthAction | null {
+  const hash = window.location.hash.replace(/^#/, '')
+  if (!hash) return null
+
+  const params = new URLSearchParams(hash)
+
+  const sessionTokens = parseHashTokens()
+  if (sessionTokens) {
+    return { type: 'session', tokens: sessionTokens }
+  }
+
+  const confirmationToken = params.get('confirmation_token')
+  if (confirmationToken) {
+    return { type: 'confirmation', token: confirmationToken }
+  }
+
+  const recoveryToken = params.get('recovery_token')
+  if (recoveryToken) {
+    return { type: 'recovery', token: recoveryToken }
+  }
+
+  return null
+}
+
+export async function verifyEmailToken(
+  token: string,
+  type: 'signup' | 'recovery' | 'invite' | 'email_change' = 'signup',
+): Promise<AuthTokens> {
+  return identityFetch('/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token, type }),
+  })
+}
+
+export async function resendConfirmationEmail(email: string): Promise<void> {
+  await identityFetch('/resend', {
+    method: 'POST',
+    body: JSON.stringify({ email, type: 'signup' }),
+  })
+}
+
 export function mapAuthError(error: unknown): string {
   const message = error instanceof Error ? error.message : 'unknown'
 
@@ -155,9 +171,18 @@ export function mapAuthError(error: unknown): string {
   }
   if (
     message.includes('Invalid login credentials') ||
-    message.includes('invalid_grant')
+    message.includes('invalid_grant') ||
+    message.includes('password invalid') ||
+    message.includes('No user found')
   ) {
     return 'invalidCredentials'
+  }
+  if (
+    message.includes('Email not confirmed') ||
+    message.includes('email not confirmed') ||
+    message.includes('not confirmed')
+  ) {
+    return 'emailNotConfirmed'
   }
   if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
     return 'network'

@@ -6,7 +6,6 @@ import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Logo } from '../components/ui/Logo'
-import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import { uk } from '../lib/i18n/uk'
 
 export function RegisterPage() {
@@ -97,11 +96,14 @@ export function RegisterPage() {
         </div>
 
         <h1
-          className="text-2xl font-semibold text-center text-espresso mb-6"
+          className="text-2xl font-semibold text-center text-espresso mb-2"
           style={{ fontFamily: 'var(--font-display)' }}
         >
           {uk.auth.signUpTitle}
         </h1>
+        <p className="text-center text-sm text-espresso/60 mb-6">
+          {uk.auth.signUpDescription}
+        </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
@@ -147,8 +149,6 @@ export function RegisterPage() {
             {uk.auth.signUp}
           </Button>
         </form>
-
-        <GoogleSignInButton />
 
         <p className="text-center text-sm text-espresso/60 mt-8">
           {uk.auth.hasAccount}{' '}

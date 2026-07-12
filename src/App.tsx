@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { GuestRoute, ProtectedRoute } from './components/auth/ProtectedRoute'
 import { MobileLayout } from './components/layout/MobileLayout'
 import { LoginPage } from './pages/LoginPage'
@@ -8,12 +8,26 @@ import { DashboardPage } from './pages/DashboardPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TemplatesPage, AlbumPage } from './pages/PlaceholderPages'
 
+function HomeRedirect() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-ivory">
+        <div className="w-8 h-8 border-2 border-rose border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return <Navigate to={user ? '/dashboard' : '/login'} replace />
+}
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
 
           <Route
             path="/login"

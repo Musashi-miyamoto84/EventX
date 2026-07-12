@@ -1,25 +1,25 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Logo } from '../components/ui/Logo'
-import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import { uk } from '../lib/i18n/uk'
 
 export function LoginPage() {
-  const { signInWithEmail, signInWithMagicLink, getErrorMessage } = useAuth()
+  const { signInWithEmail, recoverPassword, resendConfirmation, getErrorMessage } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [useMagicLink, setUseMagicLink] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
   const [error, setError] = useState('')
+  const [errorKey, setErrorKey] = useState('')
   const [success, setSuccess] = useState('')
 
   const validateEmail = (value: string) =>
@@ -28,6 +28,7 @@ export function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
+    setErrorKey('')
     setSuccess('')
 
     if (!validateEmail(email)) {
@@ -35,22 +36,41 @@ export function LoginPage() {
       return
     }
 
-    if (!useMagicLink && password.length < 8) {
+    if (password.length < 8) {
       setError(uk.errors.passwordTooShort)
       return
     }
 
     setLoading(true)
     try {
-      if (useMagicLink) {
-        await signInWithMagicLink(email)
-        setSuccess(uk.auth.magicLinkSent)
-      } else {
-        await signInWithEmail(email, password)
-        navigate(from, { replace: true })
-      }
+      await signInWithEmail(email, password)
+      navigate(from, { replace: true })
     } catch (err) {
       const key = getErrorMessage(err)
+      setErrorKey(key)
+      setError(uk.errors[key as keyof typeof uk.errors] || uk.errors.generic)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async () => {
+    setError('')
+    setErrorKey('')
+    setSuccess('')
+
+    if (!validateEmail(email)) {
+      setError(uk.errors.invalidEmail)
+      return
+    }
+
+    setLoading(true)
+    try {
+      await recoverPassword(email)
+      setSuccess(uk.auth.resetSent)
+    } catch (err) {
+      const key = getErrorMessage(err)
+      setErrorKey(key)
       setError(uk.errors[key as keyof typeof uk.errors] || uk.errors.generic)
     } finally {
       setLoading(false)
@@ -69,6 +89,13 @@ export function LoginPage() {
           <Logo size="lg" />
         </div>
 
+        <h1
+          className="text-2xl font-semibold text-center text-espresso mb-6"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          {uk.auth.signInTitle}
+        </h1>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             label={uk.auth.emailLabel}
@@ -80,25 +107,56 @@ export function LoginPage() {
             inputMode="email"
           />
 
-          {!useMagicLink && (
-            <Input
-              label={uk.auth.passwordLabel}
-              type="password"
-              placeholder={uk.auth.passwordPlaceholder}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-          )}
+          <Input
+            label={uk.auth.passwordLabel}
+            type="password"
+            placeholder={uk.auth.passwordPlaceholder}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={loading}
+              className="text-sm text-espresso/60 hover:text-rose transition-colors"
+            >
+              {uk.auth.forgotPassword}
+            </button>
+          </div>
 
           {error && (
-            <motion.p
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-sm text-red-500 text-center"
+              className="text-sm text-red-500 text-center space-y-2"
             >
-              {error}
-            </motion.p>
+              <p>{error}</p>
+              {errorKey === 'emailNotConfirmed' && email && (
+                <button
+                  type="button"
+                  disabled={resending}
+                  onClick={async () => {
+                    setResending(true)
+                    try {
+                      await resendConfirmation(email)
+                      setSuccess(uk.errors.confirmationSent)
+                      setError('')
+                      setErrorKey('')
+                    } catch {
+                      setError(uk.errors.generic)
+                    } finally {
+                      setResending(false)
+                    }
+                  }}
+                  className="text-rose font-medium hover:underline disabled:opacity-50"
+                >
+                  {uk.errors.resendConfirmation}
+                </button>
+              )}
+            </motion.div>
           )}
 
           {success && (
@@ -112,24 +170,10 @@ export function LoginPage() {
           )}
 
           <Button type="submit" fullWidth loading={loading}>
-            <Mail className="w-4 h-4" />
-            {useMagicLink ? uk.auth.useMagicLink : uk.auth.signIn}
+            <LogIn className="w-4 h-4" />
+            {uk.auth.signIn}
           </Button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setUseMagicLink(!useMagicLink)
-              setError('')
-              setSuccess('')
-            }}
-            className="w-full text-sm text-espresso/60 hover:text-rose transition-colors py-2"
-          >
-            {useMagicLink ? uk.auth.usePassword : uk.auth.useMagicLink}
-          </button>
         </form>
-
-        <GoogleSignInButton />
 
         <p className="text-center text-sm text-espresso/60 mt-8">
           {uk.auth.noAccount}{' '}
