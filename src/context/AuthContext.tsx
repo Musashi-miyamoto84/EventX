@@ -7,25 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import netlifyIdentity from 'netlify-identity-widget'
-
-interface NetlifyIdentityUser {
-  id: string
-  email: string
-  user_metadata?: Record<string, unknown>
-  app_metadata?: Record<string, unknown>
-  created_at?: string
-  token?: {
-    access_token: string
-    refresh_token: string
-    expires_in?: number
-  }
-}
 import {
   clearAuth,
+  getGoogleAuthUrl,
   getUser,
   loadAuth,
   mapAuthError,
+  parseHashTokens,
   refreshToken,
   requestMagicLink,
   requestPasswordRecovery,
@@ -50,6 +38,20 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+async function applyTokens(accessToken: string, refreshTokenValue: string, expiresIn: number) {
+  const freshUser = await getUser(accessToken)
+  saveAuth(
+    {
+      access_token: accessToken,
+      refresh_token: refreshTokenValue,
+      expires_in: expiresIn,
+      token_type: 'bearer',
+    },
+    freshUser,
+  )
+  return freshUser
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<NetlifyUser | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,60 +73,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  useEffect(() => {
-    netlifyIdentity.init()
+  const handleHashLogin = useCallback(async () => {
+    const tokens = parseHashTokens()
+    if (!tokens) return false
 
-    const handleLogin = (netlifyUser: NetlifyIdentityUser | null | undefined) => {
-      if (netlifyUser) {
-        const mapped: NetlifyUser = {
-          id: netlifyUser.id,
-          email: netlifyUser.email,
-          user_metadata: netlifyUser.user_metadata ?? {},
-          app_metadata: netlifyUser.app_metadata ?? {},
-          created_at: netlifyUser.created_at ?? new Date().toISOString(),
-        }
-        setUser(mapped)
-        if (netlifyUser.token) {
-          saveAuth(
-            {
-              access_token: netlifyUser.token.access_token,
-              refresh_token: netlifyUser.token.refresh_token,
-              expires_in: netlifyUser.token.expires_in ?? 3600,
-              token_type: 'bearer',
-            },
-            mapped,
-          )
-        }
-      }
-    }
-
-    netlifyIdentity.on('init', handleLogin)
-    netlifyIdentity.on('login', handleLogin)
-    netlifyIdentity.on('logout', () => {
+    try {
+      const freshUser = await applyTokens(
+        tokens.access_token,
+        tokens.refresh_token,
+        tokens.expires_in,
+      )
+      setUser(freshUser)
+      window.history.replaceState(null, '', window.location.pathname)
+      return true
+    } catch {
       clearAuth()
-      setUser(null)
-    })
+      return false
+    }
+  }, [])
 
-    const stored = loadAuth()
-    if (stored) {
-      applyStoredAuth(stored).finally(() => setLoading(false))
-    } else {
+  useEffect(() => {
+    async function init() {
+      const fromHash = await handleHashLogin()
+      if (fromHash) {
+        setLoading(false)
+        return
+      }
+
+      const stored = loadAuth()
+      if (stored) {
+        await applyStoredAuth(stored)
+      }
       setLoading(false)
     }
 
-    return () => {
-      netlifyIdentity.off('init')
-      netlifyIdentity.off('login')
-      netlifyIdentity.off('logout')
-    }
-  }, [applyStoredAuth])
+    init()
+  }, [applyStoredAuth, handleHashLogin])
 
   const signUpWithEmail = useCallback(
     async (email: string, password: string) => {
-      const result = await signUp(email, password)
-      if (result.user) {
-        setUser(result.user)
-      }
+      await signUp(email, password)
       return { needsVerification: true }
     },
     [],
@@ -146,11 +134,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signInWithGoogle = useCallback(() => {
-    netlifyIdentity.open('login')
+    window.location.href = getGoogleAuthUrl()
   }, [])
 
   const signOut = useCallback(() => {
-    netlifyIdentity.logout()
     clearAuth()
     setUser(null)
   }, [])

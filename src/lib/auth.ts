@@ -106,8 +106,27 @@ export async function refreshToken(
 }
 
 export function getGoogleAuthUrl(): string {
-  const redirectUri = `${window.location.origin}/auth/callback`
+  const redirectUri = window.location.origin
   return `${getIdentityUrl()}/authorize?provider=google&redirect_uri=${encodeURIComponent(redirectUri)}`
+}
+
+export function parseHashTokens(): AuthTokens | null {
+  const hash = window.location.hash.replace(/^#/, '')
+  if (!hash || !hash.includes('access_token=')) return null
+
+  const params = new URLSearchParams(hash)
+  const access_token = params.get('access_token')
+  const refresh_token = params.get('refresh_token')
+  const expires_in = Number(params.get('expires_in') ?? 3600)
+
+  if (!access_token || !refresh_token) return null
+
+  return {
+    access_token,
+    refresh_token,
+    expires_in,
+    token_type: params.get('token_type') ?? 'bearer',
+  }
 }
 
 export function mapAuthError(error: unknown): string {
@@ -124,6 +143,9 @@ export function mapAuthError(error: unknown): string {
   }
   if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
     return 'network'
+  }
+  if (message.includes('404') || message.includes('Not Found')) {
+    return 'identityNotEnabled'
   }
   return 'generic'
 }

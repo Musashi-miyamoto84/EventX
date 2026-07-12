@@ -52,6 +52,8 @@ export const uk = {
     userExists: 'Користувач з цією поштою вже існує',
     invalidCredentials: 'Невірна пошта або пароль',
     network: 'Помилка мережі. Перевірте з\'єднання.',
+    identityNotEnabled:
+      'Netlify Identity не активовано. Увімкніть Identity у налаштуваннях сайту на Netlify.',
   },
 } as const
 

@@ -5,6 +5,13 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Не перехоплювати Netlify Identity API SPA-redirectом
+[[redirects]]
+  from = "/.netlify/*"
+  to = "/.netlify/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
