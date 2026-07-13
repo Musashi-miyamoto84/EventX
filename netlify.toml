@@ -1,16 +1,15 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Не перехоплювати Netlify Identity API SPA-redirectом
 [[redirects]]
-  from = "/.netlify/*"
-  to = "/.netlify/:splat"
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
   status = 200
-  force = true
 
 [[redirects]]
   from = "/*"
@@ -19,5 +18,6 @@
 
 [dev]
   command = "npm run dev"
-  port = 5173
+  port = 8888
   targetPort = 5173
+  framework = "#custom"

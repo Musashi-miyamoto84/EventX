@@ -9,33 +9,27 @@ import { Logo } from '../components/ui/Logo'
 import { uk } from '../lib/i18n/uk'
 
 export function RegisterPage() {
-  const { signUpWithEmail, getErrorMessage } = useAuth()
+  const { signUpWithLogin, getErrorMessage } = useAuth()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState('')
+  const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-
-  const validateEmail = (value: string) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
 
-    if (!validateEmail(email)) {
-      setError(uk.errors.invalidEmail)
+    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(login.trim())) {
+      setError(uk.errors.invalidLogin)
       return
     }
-
     if (password.length < 8) {
       setError(uk.errors.passwordTooShort)
       return
     }
-
     if (password !== confirmPassword) {
       setError(uk.errors.passwordsMismatch)
       return
@@ -43,44 +37,14 @@ export function RegisterPage() {
 
     setLoading(true)
     try {
-      await signUpWithEmail(email, password)
-      setSuccess(true)
+      await signUpWithLogin(login, password)
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       const key = getErrorMessage(err)
       setError(uk.errors[key as keyof typeof uk.errors] || uk.errors.generic)
     } finally {
       setLoading(false)
     }
-  }
-
-  if (success) {
-    return (
-      <div className="min-h-dvh bg-ivory flex flex-col items-center justify-center px-5 py-10">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-sm text-center"
-        >
-          <div className="flex justify-center mb-8">
-            <Logo size="lg" />
-          </div>
-          <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100">
-            <div className="w-16 h-16 bg-rose-light rounded-full flex items-center justify-center mx-auto mb-4">
-              <UserPlus className="w-8 h-8 text-rose" />
-            </div>
-            <h2 className="text-xl font-semibold text-espresso mb-2">
-              {uk.auth.signUpTitle}
-            </h2>
-            <p className="text-espresso/70 text-sm mb-6 leading-relaxed">
-              {uk.auth.verifyEmail}
-            </p>
-            <Button fullWidth onClick={() => navigate('/login')}>
-              {uk.auth.signInTitle}
-            </Button>
-          </div>
-        </motion.div>
-      </div>
-    )
   }
 
   return (
@@ -107,13 +71,13 @@ export function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label={uk.auth.emailLabel}
-            type="email"
-            placeholder={uk.auth.emailPlaceholder}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            inputMode="email"
+            label={uk.auth.loginLabel}
+            type="text"
+            placeholder={uk.auth.loginPlaceholder}
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
+            autoComplete="username"
+            autoCapitalize="none"
           />
 
           <Input
@@ -135,13 +99,7 @@ export function RegisterPage() {
           />
 
           {error && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-sm text-red-500 text-center"
-            >
-              {error}
-            </motion.p>
+            <p className="text-sm text-red-500 text-center">{error}</p>
           )}
 
           <Button type="submit" fullWidth loading={loading}>
@@ -155,10 +113,6 @@ export function RegisterPage() {
           <Link to="/login" className="text-rose font-semibold hover:underline">
             {uk.auth.signInTitle}
           </Link>
-        </p>
-
-        <p className="text-center text-xs text-gray-400 mt-6 leading-relaxed">
-          {uk.auth.terms}
         </p>
       </motion.div>
     </div>

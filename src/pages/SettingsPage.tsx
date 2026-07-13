@@ -1,4 +1,4 @@
-import { ChevronRight, HelpCircle, LogOut, Mail, Star } from 'lucide-react'
+import { ChevronRight, HelpCircle, LogOut, Star } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { uk } from '../lib/i18n/uk'
 
@@ -21,7 +21,7 @@ export function SettingsPage() {
           </h2>
           <p className="text-sm text-espresso/70">
             {uk.dashboard.signedInAs}{' '}
-            <span className="font-medium text-espresso">{user?.email}</span>
+            <span className="font-medium text-espresso">{user?.login}</span>
           </p>
         </div>
 
@@ -35,12 +35,6 @@ export function SettingsPage() {
           icon={HelpCircle}
           title="Допомога та FAQ"
           subtitle="Часті запитання"
-        />
-
-        <SettingsItem
-          icon={Mail}
-          title="Зв'язатися з підтримкою"
-          subtitle="support@eventoly.com"
         />
 
         <button
