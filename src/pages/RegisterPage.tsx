@@ -48,11 +48,11 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-ivory flex flex-col items-center justify-center px-5 py-10">
+    <div className="min-h-dvh ambient-bg flex flex-col items-center justify-center page-pad py-10 safe-pt safe-pb">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-sm"
       >
         <div className="flex justify-center mb-10">

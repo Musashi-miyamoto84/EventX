@@ -1,16 +1,5 @@
--- Eventoly / Neon Postgres schema
--- Run in Neon SQL Editor (full schema)
-
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
-CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  login TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS users_login_idx ON users (login);
+-- Migration: add events/albums/media if users already exists
+-- Run this in Neon if you already created the users table
 
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

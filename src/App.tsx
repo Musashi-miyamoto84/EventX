@@ -2,14 +2,20 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { GuestRoute, ProtectedRoute } from './components/auth/ProtectedRoute'
 import { MobileLayout } from './components/layout/MobileLayout'
+import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { TemplatesPage, AlbumPage } from './pages/PlaceholderPages'
+import { EventDetailPage } from './pages/EventDetailPage'
+import { JoinEventPage } from './pages/JoinEventPage'
+import { GuestGalleryPage } from './pages/GuestGalleryPage'
+import { LiveSlideshowPage } from './pages/LiveSlideshowPage'
+import { AlbumPage } from './pages/AlbumPage'
+import { LegalPage } from './pages/LegalPage'
 
 function HomeRedirect() {
-  const { user, loading } = useAuth()
+  const { loading } = useAuth()
 
   if (loading) {
     return (
@@ -19,7 +25,7 @@ function HomeRedirect() {
     )
   }
 
-  return <Navigate to={user ? '/dashboard' : '/login'} replace />
+  return <LandingPage />
 }
 
 function App() {
@@ -28,6 +34,10 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
+          <Route path="/join" element={<JoinEventPage />} />
+          <Route path="/e/:code" element={<GuestGalleryPage />} />
+          <Route path="/e/:code/live" element={<LiveSlideshowPage />} />
+          <Route path="/legal/:type" element={<LegalPage />} />
 
           <Route
             path="/login"
@@ -37,7 +47,6 @@ function App() {
               </GuestRoute>
             }
           />
-
           <Route
             path="/register"
             element={
@@ -56,12 +65,12 @@ function App() {
             }
           >
             <Route index element={<DashboardPage />} />
-            <Route path="templates" element={<TemplatesPage />} />
+            <Route path="events/:id" element={<EventDetailPage />} />
             <Route path="album" element={<AlbumPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
