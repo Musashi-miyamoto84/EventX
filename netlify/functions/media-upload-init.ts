@@ -1,6 +1,5 @@
 import type { Handler } from '@netlify/functions'
 import { randomUUID } from 'node:crypto'
-import { getDb } from './_shared/db'
 import {
   resolveAlbumId,
   resolveUploadTarget,
@@ -9,9 +8,9 @@ import {
 import { savePendingMeta } from './_shared/media-store'
 import {
   badRequest,
+  json,
   ok,
   optionsResponse,
-  serverError,
   unauthorized,
 } from './_shared/http'
 
@@ -70,6 +69,7 @@ export const handler: Handler = async (event) => {
       return unauthorized(msg)
     }
     console.error('media-upload-init', error)
-    return serverError()
+    const message = error instanceof Error ? error.message : 'unknown'
+    return json(500, { error: 'generic', detail: message })
   }
 }

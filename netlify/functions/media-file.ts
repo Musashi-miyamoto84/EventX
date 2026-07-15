@@ -1,13 +1,10 @@
 import type { Config } from '@netlify/functions'
-import { getStore } from '@netlify/blobs'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { getDb } from './_shared/db'
+import { readMediaBytes } from './_shared/media-store'
 
-const LOCAL_DIR = path.join(process.cwd(), '.netlify', 'media-store')
-/** Частина відповіді для Range (безпечно під ліміт streamed ~20 МБ). */
+/** Частина Range — під ліміт відповіді Netlify. */
 const MAX_SLICE = 4 * 1024 * 1024
-/** Повна відповідь без Range (streamed payload max ≈ 20 МБ). */
+/** Повна віддача без Range (streamed ≈ 20 МБ). */
 const FULL_STREAM_MAX = 19 * 1024 * 1024
 
 const corsHeaders = {
@@ -15,28 +12,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Range',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
   'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length',
-}
-
-function localPath(key: string) {
-  const safe = key.replace(/\\/g, '/').replace(/\.\./g, '_')
-  return path.join(LOCAL_DIR, safe)
-}
-
-async function readAllBytes(key: string): Promise<Uint8Array | null> {
-  try {
-    const store = getStore({ name: 'media', consistency: 'strong' })
-    const data = await store.get(key, { type: 'arrayBuffer' })
-    if (data) return new Uint8Array(data)
-  } catch (error) {
-    console.warn('blobs read failed, trying filesystem', error)
-  }
-
-  try {
-    const buf = await readFile(localPath(key))
-    return new Uint8Array(buf)
-  } catch {
-    return null
-  }
 }
 
 function parseRange(
@@ -129,7 +104,7 @@ export default async (req: Request) => {
     const fileName = (row.file_name as string) || 'file'
     const dbSize = Number(row.size_bytes) || 0
 
-    const bytes = await readAllBytes(key)
+    const bytes = await readMediaBytes(key)
     if (!bytes) {
       return new Response(JSON.stringify({ error: 'not_found' }), {
         status: 404,
@@ -139,11 +114,7 @@ export default async (req: Request) => {
 
     const size = bytes.byteLength || dbSize
     const range = parseRange(req.headers.get('range'), size)
-
-    // Відеоплеєр без Range на великому файлі: віддаємо перший шматок 206
-    // (не для ?download=1 — інакше файл зіпсується).
-    const forcePartial =
-      !range && !download && size > FULL_STREAM_MAX
+    const forcePartial = !range && !download && size > FULL_STREAM_MAX
 
     if (range || forcePartial) {
       const start = range?.start ?? 0
@@ -167,14 +138,9 @@ export default async (req: Request) => {
       return new Response(slice, { status: 206, headers })
     }
 
-    // Повна віддача (streamed Response обходить ліміт 6 МБ base64 Handler)
     if (size > FULL_STREAM_MAX) {
       return new Response(
-        JSON.stringify({
-          error: 'use_range',
-          detail: 'Файл завеликий для однієї відповіді. Використайте Range / клієнтське завантаження.',
-          size,
-        }),
+        JSON.stringify({ error: 'use_range', size }),
         {
           status: 413,
           headers: {
@@ -202,7 +168,8 @@ export default async (req: Request) => {
     return new Response(bytes, { status: 200, headers })
   } catch (error) {
     console.error('media-file', error)
-    return new Response(JSON.stringify({ error: 'generic' }), {
+    const message = error instanceof Error ? error.message : 'unknown'
+    return new Response(JSON.stringify({ error: 'generic', detail: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

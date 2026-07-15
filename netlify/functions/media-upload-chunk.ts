@@ -3,9 +3,9 @@ import { UPLOAD_TECH } from './_shared/media-limits'
 import { saveUploadChunk } from './_shared/media-store'
 import {
   badRequest,
+  json,
   ok,
   optionsResponse,
-  serverError,
 } from './_shared/http'
 
 export const handler: Handler = async (event) => {
@@ -36,6 +36,7 @@ export const handler: Handler = async (event) => {
     return ok({ received: chunkIndex })
   } catch (error) {
     console.error('media-upload-chunk', error)
-    return serverError()
+    const message = error instanceof Error ? error.message : 'unknown'
+    return json(500, { error: 'generic', detail: message })
   }
 }

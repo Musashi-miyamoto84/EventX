@@ -3,25 +3,48 @@ import { connectLambda, getStore } from '@netlify/blobs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+type BlobStore = ReturnType<typeof getStore>
+
 const LOCAL_DIR = path.join(process.cwd(), '.netlify', 'media-store')
 
+/** Filesystem fallback only during local development, never on AWS Lambda. */
+function isLocalDev() {
+  return (
+    process.env.NETLIFY_DEV === 'true' ||
+    process.env.CONTEXT === 'dev' ||
+    (!process.env.AWS_LAMBDA_FUNCTION_NAME && !process.env.NETLIFY)
+  )
+}
+
 function localPath(key: string) {
-  // Prevent path traversal; keep flat-ish structure under LOCAL_DIR
   const safe = key.replace(/\\/g, '/').replace(/\.\./g, '_')
   return path.join(LOCAL_DIR, safe)
 }
 
-async function withBlobsStore<T>(
-  event: HandlerEvent,
-  fn: (store: ReturnType<typeof getStore>) => Promise<T>,
-): Promise<T | null> {
+function openStore(event?: HandlerEvent): BlobStore {
+  if (event) {
+    try {
+      connectLambda(event)
+    } catch {
+      // Functions 2.0 may not need connectLambda
+    }
+  }
+  return getStore('media')
+}
+
+async function withLocalFallback<T>(
+  blobsOp: () => Promise<T>,
+  localOp: () => Promise<T>,
+): Promise<T> {
   try {
-    connectLambda(event)
-    const store = getStore({ name: 'media', consistency: 'strong' })
-    return await fn(store)
+    return await blobsOp()
   } catch (error) {
-    console.warn('Netlify Blobs unavailable, falling back to filesystem', error)
-    return null
+    if (!isLocalDev()) {
+      console.error('Netlify Blobs failed (production — no filesystem fallback)', error)
+      throw error
+    }
+    console.warn('Netlify Blobs unavailable, using local filesystem', error)
+    return localOp()
   }
 }
 
@@ -31,72 +54,96 @@ export async function saveMediaFile(
   buffer: Buffer,
   metadata: { mimeType: string; fileName: string },
 ) {
-  const saved = await withBlobsStore(event, async (store) => {
-    await store.set(key, buffer, {
-      metadata: {
-        mimeType: metadata.mimeType,
-        fileName: metadata.fileName,
-      },
-    })
-    return true
-  })
-  if (saved) return
-
-  const filePath = localPath(key)
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, buffer)
-  await writeFile(`${filePath}.meta.json`, JSON.stringify(metadata), 'utf8')
+  await withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      await store.set(key, buffer, {
+        metadata: {
+          mimeType: metadata.mimeType,
+          fileName: metadata.fileName,
+        },
+      })
+    },
+    async () => {
+      const filePath = localPath(key)
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, buffer)
+      await writeFile(`${filePath}.meta.json`, JSON.stringify(metadata), 'utf8')
+    },
+  )
 }
 
 export async function readMediaFile(
   event: HandlerEvent,
   key: string,
 ): Promise<{ data: Buffer; mimeType?: string; fileName?: string } | null> {
-  const fromBlobs = await withBlobsStore(event, async (store) => {
-    const result = await store.getWithMetadata(key, { type: 'arrayBuffer' })
-    if (!result?.data) return null
-    return {
-      data: Buffer.from(result.data as ArrayBuffer),
-      mimeType: result.metadata?.mimeType as string | undefined,
-      fileName: result.metadata?.fileName as string | undefined,
-    }
-  })
-  if (fromBlobs) return fromBlobs
-  // null from withBlobsStore means blobs failed; also handle "file not in blobs"
-  if (fromBlobs === null) {
-    // try filesystem
-  }
-
-  try {
-    const filePath = localPath(key)
-    const data = await readFile(filePath)
-    let mimeType: string | undefined
-    let fileName: string | undefined
-    try {
-      const meta = JSON.parse(await readFile(`${filePath}.meta.json`, 'utf8')) as {
-        mimeType?: string
-        fileName?: string
+  return withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      const result = await store.getWithMetadata(key, { type: 'arrayBuffer' })
+      if (!result?.data) return null
+      return {
+        data: Buffer.from(result.data as ArrayBuffer),
+        mimeType: result.metadata?.mimeType as string | undefined,
+        fileName: result.metadata?.fileName as string | undefined,
       }
-      mimeType = meta.mimeType
-      fileName = meta.fileName
-    } catch {
-      // no metadata
-    }
-    return { data, mimeType, fileName }
-  } catch {
-    return null
-  }
+    },
+    async () => {
+      try {
+        const filePath = localPath(key)
+        const data = await readFile(filePath)
+        let mimeType: string | undefined
+        let fileName: string | undefined
+        try {
+          const meta = JSON.parse(await readFile(`${filePath}.meta.json`, 'utf8')) as {
+            mimeType?: string
+            fileName?: string
+          }
+          mimeType = meta.mimeType
+          fileName = meta.fileName
+        } catch {
+          // no metadata
+        }
+        return { data, mimeType, fileName }
+      } catch {
+        return null
+      }
+    },
+  )
+}
+
+export async function readMediaBytes(key: string, event?: HandlerEvent): Promise<Uint8Array | null> {
+  return withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      const data = await store.get(key, { type: 'arrayBuffer' })
+      if (!data) return null
+      return new Uint8Array(data)
+    },
+    async () => {
+      try {
+        return new Uint8Array(await readFile(localPath(key)))
+      } catch {
+        return null
+      }
+    },
+  )
 }
 
 export async function deleteMediaFile(event: HandlerEvent, key: string) {
-  await withBlobsStore(event, async (store) => {
+  try {
+    const store = openStore(event)
     await store.delete(key)
-    return true
-  })
+  } catch (error) {
+    if (!isLocalDev()) throw error
+    console.warn('blobs delete failed', error)
+  }
 
-  const filePath = localPath(key)
-  await unlink(filePath).catch(() => undefined)
-  await unlink(`${filePath}.meta.json`).catch(() => undefined)
+  if (isLocalDev()) {
+    const filePath = localPath(key)
+    await unlink(filePath).catch(() => undefined)
+    await unlink(`${filePath}.meta.json`).catch(() => undefined)
+  }
 }
 
 function pendingChunkKey(uploadId: string, index: number) {
@@ -126,15 +173,17 @@ export async function savePendingMeta(
   const payload = JSON.stringify(meta)
   const key = pendingMetaKey(uploadId)
 
-  const saved = await withBlobsStore(event, async (store) => {
-    await store.set(key, payload, { metadata: { mimeType: 'application/json' } })
-    return true
-  })
-  if (saved) return
-
-  const filePath = localPath(key)
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, payload, 'utf8')
+  await withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      await store.set(key, payload, { metadata: { mimeType: 'application/json' } })
+    },
+    async () => {
+      const filePath = localPath(key)
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, payload, 'utf8')
+    },
+  )
 }
 
 export async function readPendingMeta(
@@ -143,19 +192,22 @@ export async function readPendingMeta(
 ): Promise<PendingUploadMeta | null> {
   const key = pendingMetaKey(uploadId)
 
-  const fromBlobs = await withBlobsStore(event, async (store) => {
-    const result = await store.get(key, { type: 'text' })
-    if (!result) return null
-    return JSON.parse(result) as PendingUploadMeta
-  })
-  if (fromBlobs) return fromBlobs
-
-  try {
-    const raw = await readFile(localPath(key), 'utf8')
-    return JSON.parse(raw) as PendingUploadMeta
-  } catch {
-    return null
-  }
+  return withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      const result = await store.get(key, { type: 'text' })
+      if (!result) return null
+      return JSON.parse(result) as PendingUploadMeta
+    },
+    async () => {
+      try {
+        const raw = await readFile(localPath(key), 'utf8')
+        return JSON.parse(raw) as PendingUploadMeta
+      } catch {
+        return null
+      }
+    },
+  )
 }
 
 export async function saveUploadChunk(
@@ -166,15 +218,17 @@ export async function saveUploadChunk(
 ) {
   const key = pendingChunkKey(uploadId, index)
 
-  const saved = await withBlobsStore(event, async (store) => {
-    await store.set(key, buffer)
-    return true
-  })
-  if (saved) return
-
-  const filePath = localPath(key)
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, buffer)
+  await withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      await store.set(key, buffer)
+    },
+    async () => {
+      const filePath = localPath(key)
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, buffer)
+    },
+  )
 }
 
 async function readUploadChunk(
@@ -184,18 +238,21 @@ async function readUploadChunk(
 ): Promise<Buffer | null> {
   const key = pendingChunkKey(uploadId, index)
 
-  const fromBlobs = await withBlobsStore(event, async (store) => {
-    const result = await store.getWithMetadata(key, { type: 'arrayBuffer' })
-    if (!result?.data) return null
-    return Buffer.from(result.data as ArrayBuffer)
-  })
-  if (fromBlobs) return fromBlobs
-
-  try {
-    return await readFile(localPath(key))
-  } catch {
-    return null
-  }
+  return withLocalFallback(
+    async () => {
+      const store = openStore(event)
+      const result = await store.get(key, { type: 'arrayBuffer' })
+      if (!result) return null
+      return Buffer.from(result)
+    },
+    async () => {
+      try {
+        return await readFile(localPath(key))
+      } catch {
+        return null
+      }
+    },
+  )
 }
 
 export async function mergePendingUpload(
@@ -231,16 +288,22 @@ export async function deletePendingUpload(
   uploadId: string,
   totalChunks: number,
 ) {
-  await withBlobsStore(event, async (store) => {
+  try {
+    const store = openStore(event)
     await store.delete(pendingMetaKey(uploadId))
     for (let i = 0; i < totalChunks; i++) {
       await store.delete(pendingChunkKey(uploadId, i))
     }
-    return true
-  })
+  } catch (error) {
+    if (!isLocalDev()) {
+      console.warn('pending cleanup blobs', error)
+    }
+  }
 
-  await unlink(localPath(pendingMetaKey(uploadId))).catch(() => undefined)
-  for (let i = 0; i < totalChunks; i++) {
-    await unlink(localPath(pendingChunkKey(uploadId, i))).catch(() => undefined)
+  if (isLocalDev()) {
+    await unlink(localPath(pendingMetaKey(uploadId))).catch(() => undefined)
+    for (let i = 0; i < totalChunks; i++) {
+      await unlink(localPath(pendingChunkKey(uploadId, i))).catch(() => undefined)
+    }
   }
 }
