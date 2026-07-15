@@ -52,7 +52,6 @@ export function MediaDropzone({ onFiles, disabled }: Props) {
       <p className="text-sm font-medium text-espresso mb-1.5 px-2">
         {uploading ? uk.auth.loading : uk.event.uploadHint}
       </p>
-      <p className="text-xs text-espresso/45 px-4 leading-relaxed">{uk.event.uploadLimit}</p>
     </div>
   )
 }

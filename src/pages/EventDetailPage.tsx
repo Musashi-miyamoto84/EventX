@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import {
   ArrowLeft,
   Presentation,
@@ -23,9 +22,9 @@ import {
   updateEvent,
   uploadMedia,
 } from '../lib/api'
-import type { AccessMode, AlbumItem, EventItem, MediaItem } from '../lib/types'
+import type { AlbumItem, EventItem, MediaItem } from '../lib/types'
 import { MediaDropzone } from '../components/media/MediaDropzone'
-import { MediaGrid } from '../components/media/MediaGrid'
+import { MediaGallery } from '../components/media/MediaGrid'
 import { EventQRPanel } from '../components/qr/EventQRPanel'
 import { AddAlbumForm, AlbumChips } from '../components/events/AlbumChips'
 import { Button } from '../components/ui/Button'
@@ -285,43 +284,7 @@ export function EventDetailPage() {
             </div>
           </FadeIn>
 
-          <FadeIn
-            delay={0.12}
-            className="bg-white/80 rounded-3xl border border-champagne/60 p-4 sm:p-5"
-          >
-            <p className="text-sm font-medium text-espresso mb-3">{uk.event.access}</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(
-                [
-                  ['view', uk.event.accessView],
-                  ['download', uk.event.accessDownload],
-                  ['hidden', uk.event.accessHidden],
-                ] as const
-              ).map(([mode, label]) => (
-                <motion.button
-                  key={mode}
-                  type="button"
-                  whileTap={{ scale: 0.97 }}
-                  onClick={async () => {
-                    const res = await updateEvent({
-                      id: event.id,
-                      accessMode: mode as AccessMode,
-                    })
-                    setEvent({ ...event, ...res.event })
-                  }}
-                  className={`min-h-[44px] px-3 py-2.5 rounded-2xl text-xs font-medium border transition-all ${
-                    event.accessMode === mode
-                      ? 'bg-espresso text-white border-espresso'
-                      : 'bg-pearl/50 text-espresso/70 border-transparent hover:border-champagne'
-                  }`}
-                >
-                  {label}
-                </motion.button>
-              ))}
-            </div>
-          </FadeIn>
-
-          <FadeIn delay={0.15} className="space-y-3">
+          <FadeIn delay={0.12} className="space-y-3">
             <p className="text-sm font-medium text-espresso">{uk.event.albums}</p>
             <AlbumChips
               albums={visibleAlbums}
@@ -355,7 +318,7 @@ export function EventDetailPage() {
           </FadeIn>
 
           <FadeIn delay={0.22}>
-            <MediaGrid
+            <MediaGallery
               items={media}
               canDelete
               loading={mediaLoading}

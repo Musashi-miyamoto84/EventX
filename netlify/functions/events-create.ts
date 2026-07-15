@@ -38,8 +38,8 @@ export const handler: Handler = async (event) => {
     }
 
     const rows = await sql`
-      INSERT INTO events (owner_id, name, code, event_date, theme)
-      VALUES (${userId}, ${name}, ${code}, ${eventDate}, ${theme})
+      INSERT INTO events (owner_id, name, code, event_date, theme, access_mode)
+      VALUES (${userId}, ${name}, ${code}, ${eventDate}, ${theme}, 'download')
       RETURNING id, name, code, event_date, cover_url, theme, access_mode, created_at
     `
 

@@ -13,6 +13,7 @@ import { GuestGalleryPage } from './pages/GuestGalleryPage'
 import { LiveSlideshowPage } from './pages/LiveSlideshowPage'
 import { AlbumPage } from './pages/AlbumPage'
 import { LegalPage } from './pages/LegalPage'
+import { TemplatesPage } from './pages/TemplatesPage'
 
 function HomeRedirect() {
   const { loading } = useAuth()
@@ -66,6 +67,7 @@ function App() {
           >
             <Route index element={<DashboardPage />} />
             <Route path="events/:id" element={<EventDetailPage />} />
+            <Route path="templates" element={<TemplatesPage />} />
             <Route path="album" element={<AlbumPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

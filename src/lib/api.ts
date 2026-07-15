@@ -1,5 +1,16 @@
 import { getToken } from './auth'
+import { compressImageIfNeeded } from './image-compress'
+import { UPLOAD_TECH } from './media-limits'
 import type { AccessMode, AlbumItem, EventItem, MediaItem } from './types'
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    if (data.detail) console.error('API error detail:', data.detail)
+    throw new Error(data.error || 'generic')
+  }
+  return data as T
+}
 
 async function api<T>(
   path: string,
@@ -21,12 +32,7 @@ async function api<T>(
     headers,
   })
 
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    if (data.detail) console.error('API error detail:', data.detail)
-    throw new Error(data.error || 'generic')
-  }
-  return data as T
+  return parseResponse<T>(response)
 }
 
 export async function listEvents() {
@@ -62,7 +68,6 @@ export async function getEventByCode(code: string) {
 
 export async function updateEvent(input: {
   id: string
-  accessMode?: AccessMode
   name?: string
   eventDate?: string | null
 }) {
@@ -114,17 +119,84 @@ export async function listMedia(params: {
   )
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result || '')
-      const base64 = result.includes(',') ? result.split(',')[1] : result
-      resolve(base64)
-    }
-    reader.onerror = () => reject(new Error('read_failed'))
-    reader.readAsDataURL(file)
+function uploadHeaders(
+  file: File,
+  input: { eventId?: string; eventCode?: string; albumId?: string | null },
+  auth: boolean,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/octet-stream',
+    'X-File-Name': encodeURIComponent(file.name),
+    'X-Mime-Type': file.type || 'application/octet-stream',
+    'X-Album-Id': input.albumId ?? 'null',
+  }
+  if (input.eventId) headers['X-Event-Id'] = input.eventId
+  if (input.eventCode) headers['X-Event-Code'] = input.eventCode
+  if (auth) {
+    const token = getToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+  }
+  return headers
+}
+
+async function uploadDirect(
+  file: File,
+  input: { eventId?: string; eventCode?: string; albumId?: string | null },
+  auth: boolean,
+) {
+  const response = await fetch('/.netlify/functions/media-upload', {
+    method: 'POST',
+    headers: uploadHeaders(file, input, auth),
+    body: file,
   })
+  return parseResponse<{ media: MediaItem }>(response)
+}
+
+async function uploadChunked(
+  file: File,
+  input: { eventId?: string; eventCode?: string; albumId?: string | null },
+  auth: boolean,
+) {
+  const chunkSize = UPLOAD_TECH.chunkSize
+  const totalChunks = Math.ceil(file.size / chunkSize)
+
+  const init = await api<{ uploadId: string; chunkSize: number }>(
+    'media-upload-init',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        eventId: input.eventId,
+        eventCode: input.eventCode,
+        albumId: input.albumId ?? null,
+        fileName: file.name,
+        mimeType: file.type,
+        totalSize: file.size,
+        totalChunks,
+      }),
+    },
+    auth,
+  )
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * chunkSize
+    const chunk = file.slice(start, Math.min(start + chunkSize, file.size))
+    const response = await fetch('/.netlify/functions/media-upload-chunk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Upload-Id': init.uploadId,
+        'X-Chunk-Index': String(i),
+      },
+      body: chunk,
+    })
+    await parseResponse<{ received: number }>(response)
+  }
+
+  return api<{ media: MediaItem }>(
+    'media-upload-complete',
+    { method: 'POST', body: JSON.stringify({ uploadId: init.uploadId }) },
+    auth,
+  )
 }
 
 export async function uploadMedia(input: {
@@ -133,22 +205,18 @@ export async function uploadMedia(input: {
   eventCode?: string
   albumId?: string | null
 }) {
-  const dataBase64 = await fileToBase64(input.file)
-  return api<{ media: MediaItem }>(
-    'media-upload',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        eventId: input.eventId,
-        eventCode: input.eventCode,
-        albumId: input.albumId ?? null,
-        fileName: input.file.name,
-        mimeType: input.file.type,
-        dataBase64,
-      }),
-    },
-    Boolean(input.eventId),
-  )
+  if (!input.file.type.startsWith('image/') && !input.file.type.startsWith('video/')) {
+    throw new Error('invalid_type')
+  }
+  if (input.file.size === 0) throw new Error('empty_file')
+
+  const prepared = await compressImageIfNeeded(input.file)
+  const auth = Boolean(input.eventId)
+
+  if (prepared.size <= UPLOAD_TECH.directUploadMax) {
+    return uploadDirect(prepared, input, auth)
+  }
+  return uploadChunked(prepared, input, auth)
 }
 
 export async function deleteMedia(id: string) {

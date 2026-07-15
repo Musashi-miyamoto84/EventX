@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Camera, Home, Image, Settings } from 'lucide-react'
+import { Camera, Home, Image, LayoutTemplate, Settings } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { getUserInitial } from '../../lib/auth'
@@ -7,8 +7,19 @@ import { uk } from '../../lib/i18n/uk'
 
 const navItems = [
   { to: '/dashboard', icon: Home, label: uk.dashboard.home, end: true },
+  {
+    to: '/dashboard/templates',
+    icon: LayoutTemplate,
+    label: uk.dashboard.templates,
+    end: false,
+  },
   { to: '/dashboard/album', icon: Image, label: uk.dashboard.album, end: false },
-  { to: '/dashboard/settings', icon: Settings, label: uk.dashboard.settings, end: false },
+  {
+    to: '/dashboard/settings',
+    icon: Settings,
+    label: uk.dashboard.settings,
+    end: false,
+  },
 ]
 
 export function MobileLayout() {

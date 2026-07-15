@@ -17,7 +17,6 @@ export const handler: Handler = async (event) => {
     const { userId } = await requireUser(event)
     const body = JSON.parse(event.body || '{}') as {
       id?: string
-      accessMode?: 'view' | 'download' | 'hidden'
       name?: string
       eventDate?: string | null
     }
@@ -30,11 +29,6 @@ export const handler: Handler = async (event) => {
     `
     if (owned.length === 0) return unauthorized('not_found')
 
-    if (body.accessMode) {
-      await sql`
-        UPDATE events SET access_mode = ${body.accessMode} WHERE id = ${body.id}
-      `
-    }
     if (typeof body.name === 'string' && body.name.trim()) {
       await sql`
         UPDATE events SET name = ${body.name.trim()} WHERE id = ${body.id}

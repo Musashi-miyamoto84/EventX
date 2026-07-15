@@ -16,6 +16,12 @@
   to = "/index.html"
   status = 200
 
+[functions."media-upload-complete"]
+  timeout = 26
+
+[functions."media-upload-chunk"]
+  timeout = 26
+
 [dev]
   command = "npm run dev"
   port = 8888

@@ -3,9 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Presentation, Upload, X } from 'lucide-react'
 import { getEventByCode, listMedia, uploadMedia } from '../lib/api'
-import type { AccessMode, AlbumItem, EventItem, MediaItem } from '../lib/types'
+import type { AlbumItem, EventItem, MediaItem } from '../lib/types'
 import { MediaDropzone } from '../components/media/MediaDropzone'
-import { MediaGrid } from '../components/media/MediaGrid'
+import { MediaGallery } from '../components/media/MediaGrid'
 import { AlbumChips } from '../components/events/AlbumChips'
 import { Logo } from '../components/ui/Logo'
 import { Button } from '../components/ui/Button'
@@ -19,7 +19,6 @@ export function GuestGalleryPage() {
   const [albums, setAlbums] = useState<AlbumItem[]>([])
   const [media, setMedia] = useState<MediaItem[]>([])
   const [albumId, setAlbumId] = useState<string | undefined>()
-  const [accessMode, setAccessMode] = useState<AccessMode>('download')
   const [loading, setLoading] = useState(true)
   const [mediaLoading, setMediaLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
@@ -37,7 +36,6 @@ export function GuestGalleryPage() {
     try {
       const res = await listMedia({ code, albumId })
       setMedia(res.media)
-      setAccessMode(res.accessMode)
     } finally {
       setMediaLoading(false)
     }
@@ -49,7 +47,6 @@ export function GuestGalleryPage() {
       .then((res) => {
         setEvent(res.event)
         setAlbums(res.albums)
-        setAccessMode(res.event.accessMode)
       })
       .catch((err) => {
         setEvent(null)
@@ -148,9 +145,9 @@ export function GuestGalleryPage() {
         </AnimatePresence>
         {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
-        <MediaGrid
+        <MediaGallery
           items={media}
-          canDownload={accessMode === 'download'}
+          canDownload
           loading={mediaLoading}
         />
       </main>
