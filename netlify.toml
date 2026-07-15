@@ -16,6 +16,9 @@
   to = "/index.html"
   status = 200
 
+[functions."media-file"]
+  timeout = 26
+
 [functions."media-upload-complete"]
   timeout = 26
 

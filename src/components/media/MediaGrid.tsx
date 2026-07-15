@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Clapperboard, Download, ImageIcon, Play, Trash2, X } from 'lucide-react'
 import type { MediaItem } from '../../lib/types'
+import { downloadMediaFile } from '../../lib/download-media'
 import { uk } from '../../lib/i18n/uk'
 
 export type MediaFilter = 'all' | 'photos' | 'videos'
@@ -107,11 +108,21 @@ function VideoThumbnail({
     >
       <div className="aspect-video relative">
         <video
-          src={`${item.url}#t=0.2`}
+          src={item.url}
           muted
           playsInline
           preload="metadata"
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          onLoadedMetadata={(e) => {
+            try {
+              const el = e.currentTarget
+              if (el.duration && Number.isFinite(el.duration)) {
+                el.currentTime = Math.min(0.35, el.duration * 0.05)
+              }
+            } catch {
+              // ignore seek errors
+            }
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/10" />
         <div className="absolute inset-0 flex items-center justify-center">
@@ -213,6 +224,19 @@ function Lightbox({
   onDelete?: (id: string) => void
 }) {
   const video = isVideoItem(active)
+  const [downloading, setDownloading] = useState(false)
+
+  const handleDownload = async () => {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      await downloadMediaFile(active.url, active.fileName, active.sizeBytes)
+    } catch {
+      // ignore — браузер може показати порожнє; повторний клік після фіксу деплою
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <motion.div
@@ -225,14 +249,15 @@ function Lightbox({
         <p className="text-sm truncate pr-4 opacity-80">{active.fileName}</p>
         <div className="flex items-center gap-1">
           {canDownload && (
-            <a
-              href={active.url}
-              download={active.fileName}
-              className="p-2.5 rounded-xl hover:bg-white/10 flex items-center justify-center min-w-[44px] min-h-[44px]"
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="p-2.5 rounded-xl hover:bg-white/10 flex items-center justify-center min-w-[44px] min-h-[44px] disabled:opacity-50"
               aria-label={uk.guest.download}
             >
               <Download className="w-5 h-5" />
-            </a>
+            </button>
           )}
           {canDelete && onDelete && (
             <button
@@ -263,10 +288,12 @@ function Lightbox({
       >
         {video ? (
           <video
+            key={active.id}
             src={active.url}
             controls
             playsInline
-            className="max-h-full max-w-full rounded-xl w-full sm:w-auto"
+            preload="auto"
+            className="max-h-full max-w-full rounded-xl w-full sm:w-auto bg-black"
           />
         ) : (
           <img

@@ -17,7 +17,7 @@ async function withBlobsStore<T>(
 ): Promise<T | null> {
   try {
     connectLambda(event)
-    const store = getStore('media')
+    const store = getStore({ name: 'media', consistency: 'strong' })
     return await fn(store)
   } catch (error) {
     console.warn('Netlify Blobs unavailable, falling back to filesystem', error)
@@ -32,7 +32,12 @@ export async function saveMediaFile(
   metadata: { mimeType: string; fileName: string },
 ) {
   const saved = await withBlobsStore(event, async (store) => {
-    await store.set(key, buffer, { metadata })
+    await store.set(key, buffer, {
+      metadata: {
+        mimeType: metadata.mimeType,
+        fileName: metadata.fileName,
+      },
+    })
     return true
   })
   if (saved) return
