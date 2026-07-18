@@ -2,6 +2,7 @@ import type { HandlerEvent } from '@netlify/functions'
 import { connectLambda, getStore } from '@netlify/blobs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { deleteFromDrive, uploadToDrive } from './drive'
 
 type BlobStore = ReturnType<typeof getStore>
 
@@ -71,6 +72,9 @@ export async function saveMediaFile(
       await writeFile(`${filePath}.meta.json`, JSON.stringify(metadata), 'utf8')
     },
   )
+
+  // Secondary storage mirror (best-effort, never breaks the primary flow).
+  await uploadToDrive(key, buffer, metadata)
 }
 
 export async function readMediaFile(
@@ -144,6 +148,9 @@ export async function deleteMediaFile(event: HandlerEvent, key: string) {
     await unlink(filePath).catch(() => undefined)
     await unlink(`${filePath}.meta.json`).catch(() => undefined)
   }
+
+  // Mirror the delete to the secondary storage (best-effort).
+  await deleteFromDrive(key)
 }
 
 function pendingChunkKey(uploadId: string, index: number) {
