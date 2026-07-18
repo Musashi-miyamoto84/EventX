@@ -88,9 +88,19 @@ export const handler: Handler = async (event) => {
     const mediaId = randomUUID()
     const storageKey = `events/${resolvedEventId}/${mediaId}`
 
-    await saveMediaFile(event, storageKey, buffer, { mimeType, fileName })
-
     const sql = getDb()
+    const eventNameRows = await sql`
+      SELECT name FROM events WHERE id = ${resolvedEventId} LIMIT 1
+    `
+    const eventName = (eventNameRows[0]?.name as string | undefined) ?? undefined
+
+    await saveMediaFile(event, storageKey, buffer, {
+      mimeType,
+      fileName,
+      eventId: resolvedEventId,
+      eventName,
+    })
+
     const rows = await sql`
       INSERT INTO media (id, event_id, album_id, storage_key, file_name, mime_type, size_bytes, uploaded_by)
       VALUES (

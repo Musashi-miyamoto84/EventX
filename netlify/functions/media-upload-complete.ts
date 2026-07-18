@@ -44,9 +44,16 @@ export const handler: Handler = async (event) => {
     const mediaId = randomUUID()
     const storageKey = `events/${pending.eventId}/${mediaId}`
 
+    const eventNameRows = await sql`
+      SELECT name FROM events WHERE id = ${pending.eventId} LIMIT 1
+    `
+    const eventName = (eventNameRows[0]?.name as string | undefined) ?? undefined
+
     const sizeBytes = await mergePendingUpload(event, uploadId, storageKey, {
       mimeType: pending.mimeType,
       fileName: pending.fileName,
+      eventId: pending.eventId,
+      eventName,
     })
 
     const rows = await sql`

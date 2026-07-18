@@ -53,7 +53,7 @@ export async function saveMediaFile(
   event: HandlerEvent,
   key: string,
   buffer: Buffer,
-  metadata: { mimeType: string; fileName: string },
+  metadata: { mimeType: string; fileName: string; eventId?: string; eventName?: string },
 ) {
   await withLocalFallback(
     async () => {
@@ -266,7 +266,7 @@ export async function mergePendingUpload(
   event: HandlerEvent,
   uploadId: string,
   finalKey: string,
-  metadata: { mimeType: string; fileName: string },
+  metadata: { mimeType: string; fileName: string; eventId?: string; eventName?: string },
 ): Promise<number> {
   const meta = await readPendingMeta(event, uploadId)
   if (!meta) throw new Error('pending_not_found')

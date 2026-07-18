@@ -18,6 +18,8 @@ import type { drive_v3 } from 'googleapis'
 
 let cachedDrive: drive_v3.Drive | null | undefined
 let warnedMissing = false
+// eventId -> Drive folder id (persists across warm Lambda invocations).
+const folderCache = new Map<string, string>()
 
 function getDrive(): drive_v3.Drive | null {
   if (cachedDrive !== undefined) return cachedDrive
@@ -54,17 +56,72 @@ export function isDriveConfigured(): boolean {
   return getDrive() !== null
 }
 
+/**
+ * Resolve (find or create) a per-event folder in Drive, named after the event.
+ * Matched by appProperties.eventId so renaming the event on the site never
+ * creates duplicates. Falls back to the configured parent folder / root.
+ */
+async function resolveEventFolder(
+  drive: drive_v3.Drive,
+  eventId: string | undefined,
+  eventName: string | undefined,
+): Promise<string | undefined> {
+  const parent = folderId()
+  if (!eventId) return parent
+
+  const cached = folderCache.get(eventId)
+  if (cached) return cached
+
+  const safeEventId = eventId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const qParts = [
+    "mimeType='application/vnd.google-apps.folder'",
+    `appProperties has { key='eventId' and value='${safeEventId}' }`,
+    'trashed=false',
+  ]
+  if (parent) qParts.push(`'${parent.replace(/'/g, "\\'")}' in parents`)
+
+  let id: string | undefined
+  try {
+    const list = await drive.files.list({
+      q: qParts.join(' and '),
+      fields: 'files(id)',
+      spaces: 'drive',
+      pageSize: 1,
+    })
+    id = list.data.files?.[0]?.id ?? undefined
+
+    if (!id) {
+      const created = await drive.files.create({
+        requestBody: {
+          name: (eventName || '').trim() || `event-${eventId}`,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: parent ? [parent] : undefined,
+          appProperties: { eventId },
+        },
+        fields: 'id',
+      })
+      id = created.data.id ?? undefined
+    }
+  } catch (error) {
+    console.warn(`Drive: failed to resolve folder for event ${eventId}`, error)
+    return parent
+  }
+
+  if (id) folderCache.set(eventId, id)
+  return id ?? parent
+}
+
 /** Best-effort mirror upload. Never throws. */
 export async function uploadToDrive(
   key: string,
   buffer: Buffer,
-  metadata: { mimeType: string; fileName: string },
+  metadata: { mimeType: string; fileName: string; eventId?: string; eventName?: string },
 ): Promise<boolean> {
   const drive = getDrive()
   if (!drive) return false
 
-  const parent = folderId()
   try {
+    const parent = await resolveEventFolder(drive, metadata.eventId, metadata.eventName)
     await drive.files.create({
       requestBody: {
         name: metadata.fileName || key.split('/').pop() || key,
